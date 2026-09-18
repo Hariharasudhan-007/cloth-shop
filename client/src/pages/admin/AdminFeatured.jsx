@@ -13,9 +13,11 @@ export function AdminFeatured({ onDataChanged }) {
     setLoading(true);
     try {
       const data = await api.getAdminProducts();
-      setProducts(data || []);
+      const prodList = Array.isArray(data) ? data : (data?.products || data?.data || []);
+      setProducts(prodList);
     } catch (err) {
       showToast(err.message || 'Failed to load products', 'error');
+      setProducts([]);
     } finally {
       setLoading(false);
     }

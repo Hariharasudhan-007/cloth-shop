@@ -1,4 +1,57 @@
-const API_BASE = '/api';
+function resolveApiBase() {
+  // 1. Prioritize explicit VITE_API_URL environment variable
+  const envUrl = (import.meta.env?.VITE_API_URL || '').trim();
+  if (envUrl) {
+    const clean = envUrl.replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
+  }
+
+  // 2. Production fallback: If running in production (e.g. Vercel) and not on localhost/127.0.0.1
+  if (
+    typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1' &&
+    !window.location.hostname.startsWith('192.168.') &&
+    !window.location.hostname.startsWith('10.')
+  ) {
+    return 'https://cloth-shop-api.onrender.com/api';
+  }
+
+  // 3. Local development fallback (proxied to localhost:5000)
+  return '/api';
+}
+
+export const API_BASE = resolveApiBase();
+
+export function resolveImageUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+  if (API_BASE.startsWith('http')) {
+    const origin = new URL(API_BASE).origin;
+    return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+  }
+  return url;
+}
+
+function normalizeProduct(p) {
+  if (!p || typeof p !== 'object') return p;
+  return {
+    ...p,
+    image_url: resolveImageUrl(p.image_url),
+    secondary_image_url: p.secondary_image_url ? resolveImageUrl(p.secondary_image_url) : p.secondary_image_url
+  };
+}
+
+function extractArray(data, fieldNames = ['products', 'data', 'items', 'results']) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+  for (const field of fieldNames) {
+    if (Array.isArray(data[field])) return data[field];
+  }
+  return [];
+}
 
 function notifyAdminDataChanged(type, data = null) {
   if (typeof window !== 'undefined') {
@@ -6,7 +59,7 @@ function notifyAdminDataChanged(type, data = null) {
   }
 }
 
-async function fetchJSON(url, options = {}) {
+async function fetchJSON(url, options = {}, retries = 1) {
   const adminToken = localStorage.getItem('tl_admin_token');
   const customerToken = localStorage.getItem('tl_customer_token');
   
@@ -21,25 +74,45 @@ async function fetchJSON(url, options = {}) {
     headers['Authorization'] = `Bearer ${customerToken}`;
   }
 
-  const res = await fetch(url, {
-    cache: 'no-store', // Never serve stale cached API data
-    ...options,
-    headers,
-    credentials: 'include' // include HTTP-only cookies
-  });
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store', // Never serve stale cached API data
+      ...options,
+      headers,
+      credentials: 'include' // include HTTP-only cookies
+    });
 
-  const isJson = res.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await res.json() : await res.text();
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await res.json() : await res.text();
 
-  if (!res.ok) {
-    const errorMsg = data?.error || data?.message || 'A network error occurred. Please try again.';
-    const err = new Error(errorMsg);
-    err.status = res.status;
-    err.details = data?.details;
+    if (!res.ok) {
+      // If Render free tier is waking up (502/503/504) and this is a GET, retry once
+      if (retries > 0 && (!options.method || options.method === 'GET') && [502, 503, 504].includes(res.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return fetchJSON(url, options, retries - 1);
+      }
+
+      const errorMsg = typeof data === 'object' ? (data?.error || data?.message) : (res.statusText || 'A network error occurred.');
+      const err = new Error(errorMsg || 'A network error occurred. Please try again.');
+      err.status = res.status;
+      err.details = typeof data === 'object' ? data?.details : undefined;
+      throw err;
+    }
+
+    if (!isJson) {
+      console.warn(`[API] Expected JSON from ${url}, received non-JSON response`);
+      throw new Error(`API endpoint ${url} returned non-JSON response.`);
+    }
+
+    return data;
+  } catch (err) {
+    if (retries > 0 && (!options.method || options.method === 'GET') && !err.status) {
+      // Transient network failure on GET, retry once
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return fetchJSON(url, options, retries - 1);
+    }
     throw err;
   }
-
-  return data;
 }
 
 export const api = {
@@ -56,20 +129,26 @@ export const api = {
     if (params.limit) query.set('limit', params.limit);
     
     const qs = query.toString() ? `?${query.toString()}` : '';
-    return fetchJSON(`${API_BASE}/products${qs}`);
+    const res = await fetchJSON(`${API_BASE}/products${qs}`);
+    const list = extractArray(res, ['products', 'data', 'items', 'results']);
+    return list.map(normalizeProduct);
   },
 
   async getProduct(identifier) {
-    return fetchJSON(`${API_BASE}/products/${identifier}`);
+    const res = await fetchJSON(`${API_BASE}/products/${identifier}`);
+    const product = res?.product || res?.data || res;
+    return normalizeProduct(product);
   },
 
   async getCategories() {
-    return fetchJSON(`${API_BASE}/categories`);
+    const res = await fetchJSON(`${API_BASE}/categories`);
+    return extractArray(res, ['categories', 'data', 'items']);
   },
 
   // Promotional Deals & Coupons
   async getActiveCoupons() {
-    return fetchJSON(`${API_BASE}/coupons/active`);
+    const res = await fetchJSON(`${API_BASE}/coupons/active`);
+    return extractArray(res, ['coupons', 'data', 'items']);
   },
 
   async validateCoupon(code, subtotal) {
@@ -193,7 +272,9 @@ export const api = {
   },
 
   async getAdminProducts() {
-    return fetchJSON(`${API_BASE}/admin/products`);
+    const res = await fetchJSON(`${API_BASE}/admin/products`);
+    const list = extractArray(res, ['products', 'data', 'items']);
+    return list.map(normalizeProduct);
   },
 
   async createProduct(productData) {

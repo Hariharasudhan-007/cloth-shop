@@ -1,0 +1,18 @@
+{
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "client/dist",
+  "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "https://cloth-shop-api.onrender.com/api/:match*"
+    },
+    {
+      "source": "/uploads/:match*",
+      "destination": "https://cloth-shop-api.onrender.com/uploads/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

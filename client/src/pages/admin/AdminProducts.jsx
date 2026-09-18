@@ -47,10 +47,14 @@ export function AdminProducts({ onDataChanged }) {
         api.getAdminProducts(),
         api.getCategories()
       ]);
-      setProducts(prodData || []);
-      setCategories(catData || []);
+      const prodList = Array.isArray(prodData) ? prodData : (prodData?.products || prodData?.data || []);
+      const catList = Array.isArray(catData) ? catData : (catData?.categories || catData?.data || []);
+      setProducts(prodList);
+      setCategories(catList);
     } catch (err) {
       showToast(err.message || 'Failed to load products', 'error');
+      setProducts([]);
+      setCategories([]);
     } finally {
       setLoading(false);
     }

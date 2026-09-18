@@ -18,10 +18,13 @@ export function OffersPage({ onSelectProduct, onNavigate }) {
           api.getActiveCoupons(),
           api.getProducts({ deal: true })
         ]);
-        setCoupons(couponsData || []);
-        setSaleProducts(prodsData || []);
+        const toArray = (d) => (Array.isArray(d) ? d : (d?.coupons || d?.products || d?.data || d?.items || []));
+        setCoupons(toArray(couponsData));
+        setSaleProducts(toArray(prodsData));
       } catch (err) {
         console.error('Failed to load offers', err);
+        setCoupons([]);
+        setSaleProducts([]);
       } finally {
         setLoading(false);
       }

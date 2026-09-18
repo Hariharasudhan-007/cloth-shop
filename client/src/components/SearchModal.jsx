@@ -46,7 +46,8 @@ export function SearchModal({ isOpen, onClose, onNavigate, onSelectProduct }) {
     const timer = setTimeout(async () => {
       try {
         const data = await api.getProducts({ search: query.trim(), limit: 6 });
-        setResults(data || []);
+        const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
+        setResults(list);
       } catch (err) {
         console.error('Search error', err);
       } finally {

@@ -29,7 +29,10 @@ export function ShopPage({
 
   // Fetch categories once
   useEffect(() => {
-    api.getCategories().then(setCategories).catch(console.error);
+    api.getCategories().then((data) => {
+      const list = Array.isArray(data) ? data : (data?.categories || data?.data || []);
+      setCategories(list);
+    }).catch(console.error);
   }, []);
 
   // Fetch products reactively
@@ -46,10 +49,22 @@ export function ShopPage({
           sort: sortBy
         });
         if (!isCancelled) {
-          setProducts(data || []);
+          const list = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.products)
+            ? data.products
+            : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.items)
+            ? data.items
+            : [];
+          setProducts(list);
         }
       } catch (err) {
         console.error('Failed to load products', err);
+        if (!isCancelled) {
+          setProducts([]);
+        }
       } finally {
         if (!isCancelled) {
           setLoading(false);

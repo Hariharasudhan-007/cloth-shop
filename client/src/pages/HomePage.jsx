@@ -51,10 +51,11 @@ export function HomePage({ onNavigate, onSelectProduct }) {
           api.getCategories(),
           api.getContent().catch(() => null)
         ]);
-        setFeaturedProducts(prodData && prodData.length > 0 ? prodData : []);
-        setBestSellers(bestData && bestData.length > 0 ? bestData : []);
-        setTrendingProducts(trendData && trendData.length > 0 ? trendData : []);
-        setCategories(catData || []);
+        const toArray = (d) => (Array.isArray(d) ? d : (d?.products || d?.data || d?.items || []));
+        setFeaturedProducts(toArray(prodData));
+        setBestSellers(toArray(bestData));
+        setTrendingProducts(toArray(trendData));
+        setCategories(toArray(catData));
 
         if (contentRes?.content) {
           if (contentRes.content.homepage_banner) setBanner(contentRes.content.homepage_banner);

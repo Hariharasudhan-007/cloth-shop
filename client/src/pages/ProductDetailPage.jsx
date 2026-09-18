@@ -63,7 +63,8 @@ export function ProductDetailPage({ identifier, onBack, onNavigate, onCheckout }
         // Load related category products
         if (data.category_id) {
           const allCat = await api.getProducts({ category: data.category_id });
-          setRelatedProducts(allCat.filter((p) => p.id !== data.id).slice(0, 4));
+          const catList = Array.isArray(allCat) ? allCat : (allCat?.products || allCat?.data || []);
+          setRelatedProducts(catList.filter((p) => p.id !== data.id).slice(0, 4));
         }
       } catch (err) {
         setError(err.message || 'Product not found');
